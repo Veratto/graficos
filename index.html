@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard de Análise (v18 - Final Corrigido)</title>
+    <title>Dashboard de Análise (v19 - CSV Local)</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     
@@ -107,7 +107,7 @@
     </div>
     
     <div id="loading-message" class="loading">
-        <p>Carregando dados do Google Planilhas...</p>
+        <p>Carregando dados...</p>
     </div>
 
     <div class="dashboard-container" style="display: none;" id="dashboard-content">
@@ -168,34 +168,33 @@
 
 
         /**
-         * (v17): Função principal que inicia tudo
+         * (v19): Função principal que inicia tudo
          */
         document.addEventListener('DOMContentLoaded', () => {
             loadDataAndInit();
         });
 
         /**
-         * (v18): Carrega o CSV do GOOGLE, processa e inicia os gráficos
+         * (v19): Carrega o CSV LOCAL, processa e inicia os gráficos
          */
         async function loadDataAndInit() {
             try {
-                // 1. Busca o arquivo CSV do Google Sheets usando um PROXY de CORS
-                const url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSYSE1dqWSvl3TfkNEHf2op8e26qB7euqzUpnB93-z-KQBsXEzwTW36m2ylMy2gff-zq4uFu5CAODky/pub?output=csv';
-                // Usando o proxy 'api.allorigins.win'
-                const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+                // 1. Busca o arquivo CSV LOCAL
+                // *** ESTA É A MUDANÇA (v19) ***
+                const response = await fetch('tabela.xlsx - Planilha1.csv');
                 
                 if (!response.ok) {
-                    throw new Error(`Erro ao buscar o arquivo CSV do Google (via Proxy): ${response.statusText}`);
+                    throw new Error(`Erro ao buscar 'tabela.xlsx - Planilha1.csv': ${response.statusText}`);
                 }
                 
                 const csvText = await response.text();
                 
                 if (!csvText) {
-                    throw new Error("O proxy retornou uma resposta vazia. Verifique o link do Google Sheets.");
+                    throw new Error("O arquivo CSV está vazio.");
                 }
                 
-                // 2. Processa o CSV (usando o parser v18)
-                const parseResult = parseGoogleCSV(csvText);
+                // 2. Processa o CSV (com o parser local)
+                const parseResult = parseLocalCSV(csvText);
                 rawData = parseResult.data;
                 
                 // 3. Preenche os filtros
@@ -210,39 +209,15 @@
                 tableContent.style.display = 'block';
                 
             } catch (error) {
-                loadingMessage.innerHTML = `<p style="color: red;"><strong>Erro:</strong> ${error.message}<br>Verifique se o link do Google Planilhas está correto e "Publicado na web".</p>`;
+                loadingMessage.innerHTML = `<p style="color: red;"><strong>Erro:</strong> ${error.message}<br>Verifique se o arquivo 'tabela.xlsx - Planilha1.csv' está na MESMA PASTA que o 'index.html'.</p>`;
                 console.error(error);
             }
         }
         
         /**
-         * (v15): Helper function que lida com vírgulas dentro de aspas
+         * *** NOVO (v19): Converte o CSV LOCAL (separado por PONTO E VÍRGULA) ***
          */
-        function parseCSVLine(line) {
-            let fields = [];
-            let field = '';
-            let inQuotes = false;
-            
-            for (let j = 0; j < line.length; j++) {
-                const char = line[j];
-                
-                if (char === '"') {
-                    inQuotes = !inQuotes;
-                } else if (char === ',' && !inQuotes) {
-                    fields.push(field.replace(/^"|"$/g, '')); // Limpa aspas
-                    field = '';
-                } else {
-                    field += char;
-                }
-            }
-            fields.push(field.replace(/^"|"$/g, '')); // Adiciona o último campo
-            return fields;
-        }
-        
-        /**
-         * (v18): Converte o CSV do Google (separado por VÍRGULA)
-         */
-        function parseGoogleCSV(text) {
+        function parseLocalCSV(text) {
             const data = [];
             const filterOptions = { empresa: new Set(), mes: new Set(), observacoes: new Set(), local: new Set() };
             
@@ -251,8 +226,8 @@
             // Remove BOM
             lines[0] = lines[0].replace(/^\xEF\xBB\xBF/, '');
             
-            // Pega cabeçalhos (Google usa VÍRGULA)
-            const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
+            // Pega cabeçalhos (Usa PONTO E VÍRGULA)
+            const headers = lines[0].split(';').map(h => h.trim().toLowerCase());
             
             const colEmpresa = headers.indexOf('empresa');
             const colMes = headers.indexOf('mês'); // Procura por 'mês'
@@ -268,10 +243,14 @@
             for (let i = 1; i < lines.length; i++) {
                 if (lines[i].trim() === '') continue; // Pula linhas vazias
                 
-                const values = parseCSVLine(lines[i]); // Usa o parser robusto
+                const values = lines[i].split(';'); // Usa PONTO E VÍRGULA
+                
+                // Se um campo (como observações) tiver ; ele quebra.
+                // Esta é uma limitação do split simples.
+                // Mas vamos assumir que os dados estão limpos por enquanto.
+                
                 if (values.length <= colValor) continue; // Pula linhas mal formadas
 
-                // *** ESTA É A CORREÇÃO v18 ***
                 // Converte "42044,02" (string com vírgula) para 42044.02 (número)
                 const valor = parseFloat(values[colValor].replace(',', '.'));
                 
