@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Análise (v17 - CORS Corrigido)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f4f7f6; }
+        h1, h2 { text-align: center; color: #333; }
+        .loading { text-align: center; font-size: 1.2rem; color: #555; }
+        
+        .kpi-container {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px; width: 90%; max-width: 1800px; margin: 20px auto;
+        }
+        .kpi-box {
+            background-color: #ffffff; border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05); padding: 20px; text-align: center;
+        }
+        .kpi-title { font-size: 1rem; font-weight: 600; color: #555; margin: 0; }
+        .kpi-value { font-size: 2.5rem; font-weight: 700; color: #1a73e8; margin: 10px 0 0 0; }
+        
+        .filter-container {
+            display: flex; flex-wrap: wrap; justify-content: center; gap: 15px;
+            width: 90%; max-width: 1800px; margin: 20px auto; padding: 15px;
+            background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .filter-group { display: flex; flex-direction: column; }
+        .filter-group label { font-size: 0.8rem; font-weight: 600; color: #555; margin-bottom: 5px; }
+        .filter-group select {
+            padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px;
+            background-color: #fafafa; font-size: 0.9rem; min-width: 200px;
+        }
+        
+        .dashboard-container {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px; width: 90%; max-width: 1800px; margin: 20px auto;
+        }
+        .chart-box {
+            background-color: #ffffff; border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05); padding: 20px; min-height: 400px;
+        }
+        .chart-box-horizontal { min-height: 450px; }
+        
+        .table-box {
+            width: 90%; max-width: 1800px; margin: 20px auto;
+            background-color: #ffffff; border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05); padding: 20px; overflow-x: auto;
+        }
+        #data-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        #data-table th, #data-table td {
+            border: 1px solid #ddd; padding: 8px 12px; text-align: left;
+            font-size: 0.9rem; white-space: nowrap;
+        }
+        #data-table th { background-color: #f4f7f6; font-weight: 600; position: sticky; top: 0; }
+        #data-table td:first-child { font-weight: bold; background-color: #f9f9f9; }
+        #data-table td:not(:first-child) { text-align: right; }
+    </style>
+</head>
+<body>
+
+    <h1>Dashboard de Despesas (Online)</h1>
+
+    <div class="kpi-container">
+        <div class="kpi-box">
+            <h2 class="kpi-title">Valor Total (Filtrado)</h2>
+            <p class="kpi-value" id="kpi-total-valor">R$ 0</p>
+        </div>
+        <div class="kpi-box" id="kpi-empresa-construcao">
+            <h2 class="kpi-title">Total Construção</h2>
+            <p class="kpi-value" id="kpi-valor-construcao">R$ 0</p>
+        </div>
+        <div class="kpi-box" id="kpi-empresa-locacao">
+            <h2 class="kpi-title">Total Locação</h2>
+            <p class="kpi-value" id="kpi-valor-locacao">R$ 0</p>
+        </div>
+    </div>
+
+    <div class="filter-container">
+        <div class="filter-group">
+            <label for="filter-empresa">Filtrar por Empresa</label>
+            <select id="filter-empresa">
+                <option value="todos">Todas as Empresas</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="filter-mes">Filtrar por Mês</label>
+            <select id="filter-mes">
+                <option value="todos">Todos os Meses</option>
+            </select>
+        </div>
+         <div class="filter-group">
+            <label for="filter-local">Filtrar por Local</label>
+            <select id="filter-local">
+                <option value="todos">Todos os Locais</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="filter-observacoes">Filtrar por Observação</label>
+            <select id="filter-observacoes">
+                <option value="todos">Todas as Observações</option>
+            </select>
+        </div>
+    </div>
+    
+    <div id="loading-message" class="loading">
+        <p>Carregando dados do Google Planilhas...</p>
+    </div>
+
+    <div class="dashboard-container" style="display: none;" id="dashboard-content">
+        <div class="chart-box"><canvas id="chartEmpresa"></canvas></div>
+        <div class="chart-box"><canvas id="chartLocal"></canvas></div>
+        <div class="chart-box"><canvas id="chartMes"></canvas></div>
+        <div class="chart-box chart-box-horizontal"><canvas id="chartObservacoes"></canvas></div>
+        <div class="chart-box"><canvas id="chartMesStacked"></canvas></div>
+        <div class="chart-box"><canvas id="chartLocalStacked"></canvas></div>
+        <div class="chart-box chart-box-horizontal"><canvas id="chartObservacoesComparativo"></canvas></div>
+    </div>
+    
+    <div class="table-box" style="display: none;" id="table-content">
+        <h2>Tabela de Resumo (Observação vs. Local)</h2>
+        <div id="data-table-container"></div>
+    </div>
+
+
+    <script>
+        // Registra o plugin
+        Chart.register(ChartDataLabels);
+
+        // --- Variáveis Globais ---
+        let rawData = [];
+        let chartEmpresa, chartMes, chartLocal, chartObservacoes, chartMesStacked, chartLocalStacked, chartObservacoesComparativo;
+        
+        // Cores
+        let observacoesColors = {}, empresaColors = {}, mesColors = {};
+
+        // Formatadores
+        const numberFormatter = new Intl.NumberFormat('pt-BR', {
+            style: 'currency', currency: 'BRL',
+            minimumFractionDigits: 0, maximumFractionDigits: 0
+        });
+        const compactFormatter = new Intl.NumberFormat('pt-BR', {
+            notation: 'compact', compactDisplay: 'short'
+        });
+        const monthOrder = {
+            'JANEIRO': 1, 'FEVEREIRO': 2, 'MARÇO': 3, 'ABRIL': 4, 'MAIO': 5, 'JUNHO': 6,
+            'JULHO': 7, 'AGOSTO': 8, 'SETEMBRO': 9, 'OUTUBRO': 10, 'NOVEMBRO': 11, 'DEZEMBRO': 12
+        };
+
+        // --- Referências de Elementos ---
+        const filterEmpresa = document.getElementById('filter-empresa');
+        const filterMes = document.getElementById('filter-mes');
+        const filterLocal = document.getElementById('filter-local');
+        const filterObservacoes = document.getElementById('filter-observacoes');
+        
+        const kpiTotalValor = document.getElementById('kpi-total-valor');
+        const kpiValorConstrucao = document.getElementById('kpi-valor-construcao');
+        const kpiValorLocacao = document.getElementById('kpi-valor-locacao');
+        const kpiBoxConstrucao = document.getElementById('kpi-empresa-construcao');
+        const kpiBoxLocacao = document.getElementById('kpi-empresa-locacao');
+        
+        const loadingMessage = document.getElementById('loading-message');
+        const dashboardContent = document.getElementById('dashboard-content');
+        const tableContent = document.getElementById('table-content');
+
+
+        /**
+         * (v17): Função principal que inicia tudo
+         */
+        document.addEventListener('DOMContentLoaded', () => {
+            loadDataAndInit();
+        });
+
+        /**
+         * (v17): Carrega o CSV do GOOGLE, processa e inicia os gráficos
+         */
+        async function loadDataAndInit() {
+            try {
+                // 1. Busca o arquivo CSV do Google Sheets usando um PROXY de CORS
+                // *** ESTA É A LINHA QUE MUDAMOS (v17) ***
+                const url = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSYSE1dqWSvl3TfkNEHf2op8e26qB7euqzUpnB93-z-KQBsXEzwTW36m2ylMy2gff-zq4uFu5CAODky/pub?output=csv';
+                // Usando um proxy diferente e mais confiável
+                const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+                
+                if (!response.ok) {
+                    throw new Error(`Erro ao buscar o arquivo CSV do Google (via Proxy): ${response.statusText}`);
+                }
+                
+                const csvText = await response.text();
+                
+                if (!csvText) {
+                    throw new Error("O proxy retornou uma resposta vazia. Verifique o link do Google Sheets.");
+                }
+                
+                // 2. Processa o CSV (usando o parser v15)
+                const parseResult = parseGoogleCSV(csvText);
+                rawData = parseResult.data;
+                
+                // 3. Preenche os filtros
+                populateFilters(parseResult.filterOptions);
+                
+                // 4. Inicia os gráficos
+                init();
+                
+                // 5. Esconde o "Carregando" e mostra o dashboard
+                loadingMessage.style.display = 'none';
+                dashboardContent.style.display = 'grid';
+                tableContent.style.display = 'block';
+                
+            } catch (error) {
+                loadingMessage.innerHTML = `<p style="color: red;"><strong>Erro:</strong> ${error.message}<br>Verifique se o link do Google Planilhas está correto e "Publicado na web".</p>`;
+                console.error(error);
+            }
+        }
+        
+        /**
+         * (v15): Helper function que lida com vírgulas dentro de aspas
+         */
+        function parseCSVLine(line) {
+            let fields = [];
+            let field = '';
+            let inQuotes = false;
+            
+            for (let j = 0; j < line.length; j++) {
+                const char = line[j];
+                
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    fields.push(field.replace(/^"|"$/g, '')); // Limpa aspas
+                    field = '';
+                } else {
+                    field += char;
+                }
+            }
+            fields.push(field.replace(/^"|"$/g, '')); // Adiciona o último campo
+            return fields;
+        }
+        
+        /**
+         * (v15): Converte o CSV do Google (separado por VÍRGULA)
+         */
+        function parseGoogleCSV(text) {
+            const data = [];
+            const filterOptions = { empresa: new Set(), mes: new Set(), observacoes: new Set(), local: new Set() };
+            
+            const lines = text.split(/\r\n|\n/); // Divide por linha
+            
+            // Remove BOM
+            lines[0] = lines[0].replace(/^\xEF\xBB\xBF/, '');
+            
+            // Pega cabeçalhos (Google usa VÍRGULA)
+            const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
+            
+            const colEmpresa = headers.indexOf('empresa');
+            const colMes = headers.indexOf('mês'); // Procura por 'mês'
+            const colObservacoes = headers.indexOf('observacoes');
+            const colLocal = headers.indexOf('local');
+            const colValor = headers.indexOf('valor');
+
+            if (colValor === -1 || colMes === -1 || colEmpresa === -1) {
+                 throw new Error(`Colunas (empresa, mês, valor) não encontradas no CSV. Cabeçalhos lidos: [${headers.join(', ')}]`);
+            }
+
+            // Processa as linhas
+            for (let i = 1; i < lines.length; i++) {
+                if (lines[i].trim() === '') continue; // Pula linhas vazias
+                
+                const values = parseCSVLine(lines[i]); // Usa o parser robusto
+                if (values.length <= colValor) continue; // Pula linhas mal formadas
+
+                // O Google CSV já formata o número com PONTO (ex: 42044.02), não vírgula.
+                const valor = parseFloat(values[colValor]);
+                if (isNaN(valor) || valor === 0) continue;
+                
+                const row = {
+                    empresa: values[colEmpresa],
+                    mes: values[colMes],
+                    observacoes: values[colObservacoes],
+                    local: values[colLocal],
+                    valor: valor
+                };
+                
+                data.push(row);
+                
+                // Adiciona aos filtros
+                filterOptions.empresa.add(row.empresa);
+                filterOptions.mes.add(row.mes);
+                filterOptions.observacoes.add(row.observacoes);
+                filterOptions.local.add(row.local);
+            }
+            
+            return { data, filterOptions };
+        }
+        
+        /**
+         * (v12-JS): Preenche os <select> com as opções
+         */
+        function populateFilters(filterOptions) {
+            // Helper para gerar cores
+            const randColor = () => `rgba(${rand(0,255)}, ${rand(0,255)}, ${rand(0,255)}, 0.7)`;
+            const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+            
+            filterOptions.empresa.forEach(item => {
+                if(item) {
+                    filterEmpresa.add(new Option(item, item));
+                    empresaColors[item] = randColor();
+                }
+            });
+            
+            Array.from(filterOptions.mes).sort((a, b) => (monthOrder[a] || 0) - (monthOrder[b] || 0)).forEach(item => {
+                if(item) {
+                    filterMes.add(new Option(item, item));
+                    mesColors[item] = randColor();
+                }
+            });
+            
+            filterOptions.local.forEach(item => {
+                if(item) filterLocal.add(new Option(item, item));
+            });
+            
+            filterOptions.observacoes.forEach(item => {
+                if(item) {
+                    filterObservacoes.add(new Option(item, item));
+                    observacoesColors[item] = randColor();
+                }
+            });
+        }
+
+
+        /**
+         * (v12) Função principal de cálculo
+         */
+        function calculateChartData(data) {
+            let aggEmpresa = {}, aggMes = {}, aggLocal = {}, aggObservacoes = {};
+            let aggMesEmpresa = {}, aggLocalObservacoes = {}, aggObservacoesMes = {};
+            let totalValor = 0;
+            let uniqueMeses = new Set(), uniqueEmpresas = new Set(), uniqueLocais = new Set(), uniqueObservacoes = new Set();
+
+            data.forEach(row => {
+                totalValor += row.valor;
+                (aggEmpresa[row.empresa] = aggEmpresa[row.empresa] || 0) += row.valor;
+                (aggMes[row.mes] = aggMes[row.mes] || 0) += row.valor;
+                (aggLocal[row.local] = aggLocal[row.local] || 0) += row.valor;
+                (aggObservacoes[row.observacoes] = aggObservacoes[row.observacoes] || 0) += row.valor;
+                
+                aggMesEmpresa[row.mes] = aggMesEmpresa[row.mes] || {};
+                (aggMesEmpresa[row.mes][row.empresa] = aggMesEmpresa[row.mes][row.empresa] || 0) += row.valor;
+                
+                aggLocalObservacoes[row.local] = aggLocalObservacoes[row.local] || {};
+                (aggLocalObservacoes[row.local][row.observacoes] = aggLocalObservacoes[row.local][row.observacoes] || 0) += row.valor;
+                
+                aggObservacoesMes[row.observacoes] = aggObservacoesMes[row.observacoes] || {};
+                (aggObservacoesMes[row.observacoes][row.mes] = aggObservacoesMes[row.observacoes][row.mes] || 0) += row.valor;
+
+                uniqueMeses.add(row.mes);
+                uniqueEmpresas.add(row.empresa);
+                uniqueLocais.add(row.local);
+                uniqueObservacoes.add(row.observacoes);
+            });
+
+            // Gráfico 1: Empresa
+            const chartEmpresaData = {
+                labels: Object.keys(aggEmpresa),
+                datasets: [{ label: 'Distribuição por Empresa', data: Object.values(aggEmpresa) }]
+            };
+            
+            // Gráfico 2: Mês (Ordenado)
+            let sortedMes = Object.entries(aggMes).sort((a, b) => (monthOrder[a[0]] || 0) - (monthOrder[b[0]] || 0));
+            const chartMesData = {
+                labels: sortedMes.map(item => item[0]),
+                datasets: [{
+                    label: 'Valor Total por Mês',
+                    data: sortedMes.map(item => item[1]),
+                    backgroundColor: 'rgba(255, 159, 64, 0.7)'
+                }]
+            };
+
+            // Gráfico 3: Local
+            const chartLocalData = {
+                labels: Object.keys(aggLocal),
+                datasets: [{
+                    label: 'Valor Total por Local',
+                    data: Object.values(aggLocal),
+                    backgroundColor: 'rgba(54, 162, 235, 0.7)'
+                }]
+            };
+
+            // Gráfico 4: Observações (Ordenado)
+            let sortedObservacoes = Object.entries(aggObservacoes).sort((a, b) => b[1] - a[1]);
+            const chartObservacoesData = {
+                labels: sortedObservacoes.map(item => item[0]),
+                datasets: [{
+                    label: 'Valor Total por Observação',
+                    data: sortedObservacoes.map(item => item[1]),
+                    backgroundColor: 'rgba(255, 99, 132, 0.7)'
+                }]
+            };
+            
+            // Gráfico 5: Mês (Empilhado por Empresa)
+            const labelsMeses = Array.from(uniqueMeses).sort((a, b) => (monthOrder[a] || 0) - (monthOrder[b] || 0));
+            const labelsEmpresas = Array.from(uniqueEmpresas);
+            const datasets5 = labelsEmpresas.map(empresa => {
+                const data = labelsMeses.map(mes => (aggMesEmpresa[mes] && aggMesEmpresa[mes][empresa]) || 0);
+                return { label: empresa, data: data, backgroundColor: empresaColors[empresa] };
+            });
+            const chartMesStackedData = { labels: labelsMeses, datasets: datasets5 };
+
+            // Gráfico 6: Local (Empilhado por Observação)
+            const labelsLocais = Array.from(uniqueLocais);
+            const labelsObservacoes = Array.from(uniqueObservacoes);
+            const datasets6 = labelsObservacoes.map(obs => {
+                const data = labelsLocais.map(local => (aggLocalObservacoes[local] && aggLocalObservacoes[local][obs]) || 0);
+                return { label: obs, data: data, backgroundColor: observacoesColors[obs] };
+            });
+            const chartLocalStackedData = { labels: labelsLocais, datasets: datasets6 };
+            
+            // Gráfico 7: Observações (Comparativo por Mês)
+            const labelsObsSorted = sortedObservacoes.map(item => item[0]);
+            const datasets7 = labelsMeses.map(mes => {
+                const data = labelsObsSorted.map(obs => (aggObservacoesMes[obs] && aggObservacoesMes[obs][mes]) || 0);
+                return {
+                    label: mes,
+                    data: data,
+                    backgroundColor: mesColors[mes] || 'rgba(150, 150, 150, 0.7)'
+                };
+            });
+            const chartObservacoesComparativoData = { labels: labelsObsSorted, datasets: datasets7 };
+
+            return { 
+                totalValor, aggEmpresa,
+                chartEmpresaData, chartMesData, chartLocalData, chartObservacoesData,
+                chartMesStackedData, chartLocalStackedData, chartObservacoesComparativoData,
+                aggLocalObservacoes, labelsLocais, labelsObservacoes
+            };
+        }
+        
+        /**
+         * (v10) Função para atualizar os KPIs
+         */
+        function updateKPIs(total, aggEmpresa) {
+            kpiTotalValor.textContent = numberFormatter.format(total);
+            let valConstrucao = 0, valLocacao = 0;
+            
+            for (const key in aggEmpresa) {
+                if (key.toUpperCase().includes('CONSTRUÇÃO')) valConstrucao += aggEmpresa[key];
+                if (key.toUpperCase().includes('LOCAÇÃO')) valLocacao += aggEmpresa[key];
+            }
+
+            kpiValorConstrucao.textContent = numberFormatter.format(valConstrucao);
+            kpiValorLocacao.textContent = numberFormatter.format(valLocacao);
+            kpiBoxConstrucao.style.display = (valConstrucao > 0 || total === 0) ? 'block' : 'none';
+            kpiBoxLocacao.style.display = (valLocacao > 0 || total === 0) ? 'block' : 'none';
+        }
+        
+        
+        /**
+         * (v10) Função para desenhar a tabela de resumo
+         */
+        function updateTable(aggData, labelsLinhas, labelsColunas) {
+            const container = document.getElementById('data-table-container');
+            let html = '<table id="data-table"><thead><tr><th>Observação / Local</th>';
+
+            labelsColunas.forEach(col => { html += `<th>${col}</th>`; });
+            html += '</tr></thead><tbody>';
+
+            labelsLinhas.forEach(linha => {
+                html += `<tr><td>${linha}</td>`;
+                labelsColunas.forEach(col => {
+                    const valor = (aggData[col] && aggData[col][linha]) ? aggData[col][linha] : 0;
+                    html += `<td>${numberFormatter.format(valor)}</td>`;
+                });
+                html += '</tr>';
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+
+        /**
+         * (v12) Função chamada quando qualquer filtro muda.
+         */
+        function updateCharts() {
+            // 1. Pega os valores dos filtros
+            const selectedEmpresa = filterEmpresa.value;
+            const selectedMes = filterMes.value;
+            const selectedLocal = filterLocal.value;
+            const selectedObservacoes = filterObservacoes.value;
+
+            // 2. Filtra os dados brutos
+            const filteredData = rawData.filter(row => {
+                const passEmpresa = (selectedEmpresa === 'todos') || (row.empresa === selectedEmpresa);
+                const passMes = (selectedMes === 'todos') || (row.mes === selectedMes);
+                const passLocal = (selectedLocal === 'todos') || (row.local === selectedLocal);
+                const passObservacoes = (selectedObservacoes === 'todos') || (row.observacoes === selectedObservacoes);
+                return passEmpresa && passMes && passLocal && passObservacoes;
+            });
+
+            // 3. Calcula os novos dados de gráfico
+            const newData = calculateChartData(filteredData);
+            
+            // 4. Atualiza os KPIs
+            updateKPIs(newData.totalValor, newData.aggEmpresa);
+            
+            // 5. Atualiza os 7 gráficos
+            chartEmpresa.data = newData.chartEmpresaData; chartEmpresa.update();
+            chartMes.data = newData.chartMesData; chartMes.update();
+            chartLocal.data = newData.chartLocalData; chartLocal.update();
+            chartObservacoes.data = newData.chartObservacoesData; chartObservacoes.update();
+            chartMesStacked.data = newData.chartMesStackedData; chartMesStacked.update();
+            chartLocalStacked.data = newData.chartLocalStackedData; chartLocalStacked.update();
+            chartObservacoesComparativo.data = newData.chartObservacoesComparativoData; chartObservacoesComparativo.update();
+            
+            // 6. Atualiza a tabela
+            updateTable(newData.aggLocalObservacoes, newData.labelsObservacoes, newData.labelsLocais);
+        }
+        
+        /**
+         * (v12) Função de inicialização
+         */
+        function init() {
+            // Adiciona os event listeners
+            filterEmpresa.addEventListener('change', updateCharts);
+            filterMes.addEventListener('change', updateCharts);
+            filterLocal.addEventListener('change', updateCharts);
+            filterObservacoes.addEventListener('change', updateCharts);
+            
+            // Calcula os dados iniciais (com todos os dados)
+            const initialData = calculateChartData(rawData);
+
+            // Opções comuns de datalabel
+            const datalabelFormat = (value) => numberFormatter.format(value);
+            const datalabelCompact = (value) => (value > 1000) ? compactFormatter.format(value) : '';
+
+            // --- Cria Gráfico 1: Empresa (Pizza) ---
+            chartEmpresa = new Chart(document.getElementById('chartEmpresa'), {
+                type: 'pie', data: initialData.chartEmpresaData,
+                options: { responsive: true, maintainAspectRatio: false, plugins: {
+                    title: { display: true, text: 'Visão por Empresa', font: { size: 16 } },
+                    legend: { position: 'top' },
+                    datalabels: {
+                        formatter: (value, ctx) => {
+                            const total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                            if (total === 0) return '0%';
+                            const percentage = (value / total * 100).toFixed(1);
+                            return percentage + '%'; 
+                        },
+                        color: '#fff', font: { weight: 'bold' }
+                    }
+                }}
+            });
+            
+            // --- Cria Gráfico 2: Local (Barra) ---
+            chartLocal = new Chart(document.getElementById('chartLocal'), {
+                type: 'bar', data: initialData.chartLocalData,
+                options: { responsive: true, maintainAspectRatio: false, plugins: {
+                    title: { display: true, text: 'Visão por Local', font: { size: 16 } },
+                    legend: { display: false },
+                    datalabels: { anchor: 'end', align: 'top', formatter: datalabelFormat, font: { weight: 'bold', size: 10 } }
+                }}
+            });
+            
+            // --- Cria Gráfico 3: Mês (Barra) ---
+            chartMes = new Chart(document.getElementById('chartMes'), {
+                type: 'bar', data: initialData.chartMesData,
+                options: { responsive: true, maintainAspectRatio: false, plugins: {
+                    title: { display: true, text: 'Visão por Mês', font: { size: 16 } },
+                    legend: { display: false },
+                    datalabels: { anchor: 'end', align: 'top', formatter: datalabelFormat, font: { weight: 'bold', size: 10 } }
+                }}
+            });
+
+            // --- Cria Gráfico 4: Observações (Barra Horizontal) ---
+            chartObservacoes = new Chart(document.getElementById('chartObservacoes'), {
+                type: 'bar', data: initialData.chartObservacoesData,
+                options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', 
+                    plugins: {
+                    title: { display: true, text: 'Visão por Observações (Total)', font: { size: 16 } },
+                    legend: { display: false },
+                    datalabels: { anchor: 'end', align: 'right', formatter: datalabelFormat, font: { weight: 'bold', size: 10 } }
+                }}
+            });
+            
+            // --- Cria Gráfico 5: Mês vs Empresa (Empilhado) ---
+            chartMesStacked = new Chart(document.getElementById('chartMesStacked'), {
+                type: 'bar', data: initialData.chartMesStackedData,
+                options: { responsive: true, maintainAspectRatio: false, plugins: {
+                    title: { display: true, text: 'Mês (Empilhado por Empresa)', font: { size: 16 } },
+                    legend: { position: 'top' },
+                    datalabels: { display: false }
+                }, scales: { x: { stacked: true }, y: { stacked: true } }}
+            });
+            
+            // --- Cria Gráfico 6: Local vs Observações (Empilhado) ---
+            chartLocalStacked = new Chart(document.getElementById('chartLocalStacked'), {
+                type: 'bar', data: initialData.chartLocalStackedData,
+                options: { responsive: true, maintainAspectRatio: false, plugins: {
+                    title: { display: true, text: 'Local (Empilhado por Observação)', font: { size: 16 } },
+                    legend: { position: 'top' },
+                    datalabels: { color: '#fff', formatter: datalabelCompact, font: { weight: 'bold', size: 9 } }
+                }, scales: { x: { stacked: true }, y: { stacked: true } }}
+            });
+            
+            // --- (v12) Cria Gráfico 7 (Comparativo) ---
+            chartObservacoesComparativo = new Chart(document.getElementById('chartObservacoesComparativo'), {
+                type: 'bar', data: initialData.chartObservacoesComparativoData,
+                options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', // Horizontal
+                    plugins: {
+                    title: { display: true, text: 'Observações (Comparativo por Mês)', font: { size: 16 } },
+                    legend: { position: 'top' },
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'right',
+                        formatter: (value) => (value > 0) ? compactFormatter.format(value) : '',
+                        font: { weight: 'bold', size: 9 }
+                    }
+                }, 
+                // *** Garante que não está empilhado ***
+                scales: { x: { stacked: false }, y: { stacked: false } }}
+            });
+            
+            
+            // --- Cria KPIs e Tabela Iniciais ---
+            updateKPIs(initialData.totalValor, initialData.aggEmpresa);
+            updateTable(initialData.aggLocalObservacoes, initialData.labelsObservacoes, initialData.labelsLocais);
+        }
+        
+    </script>
+
+</body>
+</html>
